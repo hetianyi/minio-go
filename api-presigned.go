@@ -61,6 +61,40 @@ func (c Client) presignURL(ctx context.Context, method string, bucketName string
 	return req.URL, nil
 }
 
+// presignURLWithCustomHeaders - Returns a presigned URL for an input 'method'.
+// Expires maximum is 7days - ie. 604800 and minimum is 1.
+func (c Client) presignURLWithCustomHeaders(ctx context.Context, method string, bucketName string, objectName string, expires time.Duration, reqParams url.Values, headers http.Header) (u *url.URL, err error) {
+	// Input validation.
+	if method == "" {
+		return nil, errInvalidArgument("method cannot be empty.")
+	}
+	if err = s3utils.CheckValidBucketName(bucketName); err != nil {
+		return nil, err
+	}
+	if err = isValidExpiry(expires); err != nil {
+		return nil, err
+	}
+
+	// Convert expires into seconds.
+	expireSeconds := int64(expires / time.Second)
+	reqMetadata := requestMetadata{
+		presignURL:   true,
+		bucketName:   bucketName,
+		objectName:   objectName,
+		expires:      expireSeconds,
+		queryValues:  reqParams,
+		customHeader: headers,
+	}
+
+	// Instantiate a new request.
+	// Since expires is set newRequest will presign the request.
+	var req *http.Request
+	if req, err = c.newRequest(ctx, method, reqMetadata); err != nil {
+		return nil, err
+	}
+	return req.URL, nil
+}
+
 // PresignedGetObject - Returns a presigned URL to access an object
 // data without credentials. URL can have a maximum expiry of
 // upto 7days or a minimum of 1sec. Additionally you can override
@@ -91,6 +125,16 @@ func (c Client) PresignedPutObject(ctx context.Context, bucketName string, objec
 		return nil, err
 	}
 	return c.presignURL(ctx, http.MethodPut, bucketName, objectName, expires, nil)
+}
+
+// PresignedPutObject - Returns a presigned URL to upload an object
+// without credentials. URL can have a maximum expiry of upto 7days
+// or a minimum of 1sec.
+func (c Client) PresignedPutObjectWithCustomHeaders(ctx context.Context, bucketName string, objectName string, expires time.Duration, headers http.Header) (u *url.URL, err error) {
+	if err = s3utils.CheckValidObjectName(objectName); err != nil {
+		return nil, err
+	}
+	return c.presignURLWithCustomHeaders(ctx, http.MethodPut, bucketName, objectName, expires, nil, headers)
 }
 
 // Presign - returns a presigned URL for any http method of your choice
